@@ -58,19 +58,21 @@ class Problem:
 
                         # Evolution from tc2 to t+dt
                         #Positions
-                        self.pos[k][i-1]=pos_tc2_im1+vel_tc2_im1*math.sin(self.a-tc2)-(pos_tc2_im1-self.eq_pos[i-1])*(1-math.cos(self.a-tc2))+self.a*self.a/2*self.delta
-                        self.pos[k][i]=pos_tc2_i+vel_tc2_i*math.sin(self.a-tc2)-(pos_tc2_i-self.eq_pos[i])*(1-math.cos(self.a-tc2))-self.a*self.a/2*self.delta
+                        self.pos[k][i-1]=pos_tc2_im1+vel_tc2_im1*math.sin(self.a-tc2)-(pos_tc2_im1-self.eq_pos[i-1])*(1-math.cos(self.a-tc2))+(self.a-tc2)*(self.a-tc2)/2*self.delta
+                        self.pos[k][i]=pos_tc2_i+vel_tc2_i*math.sin(self.a-tc2)-(pos_tc2_i-self.eq_pos[i])*(1-math.cos(self.a-tc2))-(self.a-tc2)*(self.a-tc2)/2*self.delta
                         #Velocities
-                        self.vel[k][i-1]=vel_tc2_im1*math.cos(self.a-tc2)-math.sin(self.a-tc2)*(pos_tc2_im1-self.eq_pos[i-1])+self.a*self.delta
-                        self.vel[k][i]=vel_tc2_i*math.cos(self.a-tc2)-math.sin(self.a-tc2)*(pos_tc2_i-self.eq_pos[i])-self.a*self.delta
+                        self.vel[k][i-1]=vel_tc2_im1*math.cos(self.a-tc2)-math.sin(self.a-tc2)*(pos_tc2_im1-self.eq_pos[i-1])+(self.a-tc2)*self.delta
+                        self.vel[k][i]=vel_tc2_i*math.cos(self.a-tc2)-math.sin(self.a-tc2)*(pos_tc2_i-self.eq_pos[i])-(self.a-tc2)*self.delta
 
 
             ########### Applying PBC
-            if(self.pos[k][N-1]>self.pos[k][0]+self.N*delta):
+            if(self.pos[k][self.N-1]>self.pos[k][0]+self.N*self.delta):
 
                 #Translation in the x0 position and equilibrium position to compare with x(N-1). Now it is as x0 is in front of x(N-1)
                 self.pos[k][0]=self.pos[k][0]+self.N*self.delta
                 self.eq_pos0=self.eq_pos[0]+self.N*self.delta
+
+                N=self.N
 
                 #Computation of tc1
                 tc1 = self.a*(self.pos[k-1][0]-self.pos[k-1][N-1])/(self.pos[k-1][0]-self.pos[k-1][N-1] + self.pos[k][0]-self.pos[k][N-1])
@@ -90,33 +92,18 @@ class Problem:
 
                 # Evolution from tc2 to t+dt
                 #Positions
-                self.pos[k][N-1]=pos_tc2_im1+vel_tc2_im1*math.sin(self.a-tc2)-(pos_tc2_im1-self.eq_pos[N-1])*(1-math.cos(self.a-tc2))+self.a*self.a/2*self.delta
-                self.pos[k][0]=pos_tc2_i+vel_tc2_i*math.sin(self.a-tc2)-(pos_tc2_i-self.eq_pos0)*(1-math.cos(self.a-tc2))-self.a*self.a/2*self.delta
+                self.pos[k][N-1]=pos_tc2_im1+vel_tc2_im1*math.sin(self.a-tc2)-(pos_tc2_im1-self.eq_pos[N-1])*(1-math.cos(self.a-tc2))+(self.a-tc2)*(self.a-tc2)/2*self.delta
+                self.pos[k][0]=pos_tc2_i+vel_tc2_i*math.sin(self.a-tc2)-(pos_tc2_i-self.eq_pos0)*(1-math.cos(self.a-tc2))-(self.a-tc2)*(self.a-tc2)/2*self.delta
                 #Velocities
-                self.vel[k][N-1]=vel_tc2_im1*math.cos(self.a-tc2)-math.sin(self.a-tc2)*(pos_tc2_im1-self.eq_pos[N-1])+self.a*self.delta
-                self.vel[k][0]=vel_tc2_i*math.cos(self.a-tc2)-math.sin(self.a-tc2)*(pos_tc2_i-self.eq_pos0)-self.a*self.delta
+                self.vel[k][N-1]=vel_tc2_im1*math.cos(self.a-tc2)-math.sin(self.a-tc2)*(pos_tc2_im1-self.eq_pos[N-1])+(self.a-tc2)*self.delta
+                self.vel[k][0]=vel_tc2_i*math.cos(self.a-tc2)-math.sin(self.a-tc2)*(pos_tc2_i-self.eq_pos0)-(self.a-tc2)*self.delta
 
                 #And finally, I need to translade N-1 by -N*delta. x0 is already in the right place. When I order after dt N-1 will be the next 0 and 0 will be the next N-1
                 self.pos[k][N-1]=self.pos[k][N-1]-self.N*self.delta
 
 
 
-                
-            
-
-
-
             #Order all the particles according to their positions after each time interval dt
-            self.vel[k]=[x for _,x in sorted(zip(self.pos[k],self.vel[k]))]
-            self.pos[k].sort()
-
-            #Check if a sheet crossed the borders and apply periodic boundary conditions
-            if(self.pos[k][self.N-1]>(self.N-1/2)*self.delta):
-                self.pos[k][self.N-1]=self.pos[k][self.N-1]-(self.N-1/2)*self.delta
-            if(self.pos[k][0]<-self.delta/2):
-                self.pos[k][0]=self.delta/2-self.pos[k][0]+(self.N-1)*self.delta
-
-            #Order again
             self.vel[k]=[x for _,x in sorted(zip(self.pos[k],self.vel[k]))]
             self.pos[k].sort()
 
@@ -140,10 +127,18 @@ class Problem:
         #plt.plot(t_list,pos_list,t_list,pos_list2,t_list,pos_list3)
         #plt.plot(t_list,pos_list,t_list,pos_list2,t_list,pos_list3,t_list,pos_list4,t_list,pos_list5,t_list,pos_list6,t_list,pos_list7,t_list,pos_list8,t_list,pos_list9)
 
+        #plt.hist(self.vel[self.num_iter-1],normed=False,bins=50,range=[-1,1])
+        #plt.show()
+
+
+        """
+        ####Animation of the sheets################
         fig = plt.figure()
-        ax = plt.axes(xlim=(-0.1, 0.4), ylim=(-0.1, 0.1))
+        ax = plt.axes(xlim=(-0.3, (self.N+2)*self.delta), ylim=(-0.1, 0.1))
         d, = ax.plot([self.pos[0][i] for i in range(self.N)],
                      [0 for i in range(self.N)], 'ro')
+        plt.axvline(x=-self.delta/2)
+        plt.axvline(x=(self.N-0.5)*self.delta)
         circle = plt.Circle((5, 5), 1, color='b', fill=False)
         ax.add_artist(circle)
 
@@ -155,7 +150,22 @@ class Problem:
             return d,
 
                 # call the animator.  blit=True means only re-draw the parts that have changed.
-        anim = animation.FuncAnimation(fig, animate, frames=999, interval=20)
+        anim = animation.FuncAnimation(fig, animate, frames=self.num_iter, interval=30)
+
+        #plt.show()
+        """
+
+        ###Animation of the position histogram###
+        fig = plt.figure()
+
+        # animation function.  This is called sequentially
+        def animate(i):
+            plt.cla()
+            #plt.hist(self.pos[i],normed=False,bins=200,range=[0,(self.N-1)*self.delta])
+            plt.hist(self.vel[i],normed=True,bins=50,range=[-0.1,0.1])
+
+        # call the animator.  blit=True means only re-draw the parts that have changed.
+        anim = animation.FuncAnimation(fig, animate, frames=self.num_iter, interval=50)
 
         plt.show()
 

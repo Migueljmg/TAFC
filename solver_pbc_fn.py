@@ -13,8 +13,7 @@ class Problem:
         self.N=number #number of particles
         self.num_iter=n_iter #number of iterations
 
-        self.n_i_right=0#initial number of right images
-        self.n_i_left=0#initial number of left images
+        self.n_i=0#number of images on each side
         self.vec_n_i_left=[]#Important for calculating the actual equilibrium positions of the particles inside the box for every k
         self.vec_n_i_left.append(0)#we only start calculating the energy for k=1
 
@@ -46,69 +45,50 @@ class Problem:
             img_count_right=0
             img_count_max=0
 
-            #print("\n begin")
-            #print(k)
-            #print(self.pos[k-1])
-            #print(self.vel[k-1])
-            #print(self.eq_pos)
 
-            #print(self.vel[k-1],"all")
-
-
-                
             
             #Clear the previous images
-            for i in range(self.n_i_left):
+            for i in range(self.n_i):
                 del self.pos[k-1][0]
                 del self.vel[k-1][0]
                 del self.eq_pos[0]
 
 
-            for i in range(self.N,self.N+self.n_i_right):
+            for i in range(self.N,self.N+self.n_i):
                 del self.pos[k-1][self.N]
                 del self.vel[k-1][self.N]
                 del self.eq_pos[self.N]
 
-            #print(self.pos[k-1])
-            #print(self.vel[k-1])
-            #print(self.eq_pos)
             
 
-
+            in1=True
+            in2=True
             for i in range(self.N):
                     
                 self.vel[k][i]=self.vel[k-1][i]*cos-sin*(self.pos[k-1][i]-self.eq_pos[i])
                 self.pos[k][i]=self.pos[k-1][i]+self.vel[k-1][i]*sin-(self.pos[k-1][i]-self.eq_pos[i])*(1-cos)
 
 
-                if(self.pos[k][i]>(self.N-0.5)*self.delta):
-                    img_count_left+=1
+                if(self.pos[k][i]>(self.N-0.5)*self.delta and in1==True):
+                    img_count_left=self.N-i
+                    in1=False
 
-                if(self.pos[k][i]<-0.5*self.delta):
-                    img_count_right+=1
-        
-            #SE NAO DESCOBRIR O ERRO POSSO SIMPLESMENTE AUMENTAR AS IMAGENS E PARECE JA DAR BEM#####
-            img_count_left+=1
-            img_count_right+=1
-            #########################################################################################
 
-            #print(img_count_left,img_count_right)
+                if(self.pos[k][self.N-i-1]<-0.5*self.delta and in2==True):
+                    img_count_right=self.N-i
+                    in2=False
 
 
             img_count_max=max(img_count_left,img_count_right)
 
+
             self.vec_n_i_left.append(img_count_max)
 
             #Create new images
-            self.n_i_right=img_count_max
-            self.n_i_left=img_count_max
-
-            #print(img_count_left,img_count_right)
-
-            #print(self.vel[k])
-
+            self.n_i=img_count_max
+            
             #First creation of images
-            for i in range(self.n_i_right):
+            for i in range(self.n_i):
                 #Right images
                 self.vel[k].append(self.vel[k][i])
                 self.pos[k].append(self.pos[k][i]+self.N*self.delta)
@@ -117,7 +97,7 @@ class Problem:
                 self.vel[k-1].append(self.vel[k-1][i])
                 self.pos[k-1].append(self.pos[k-1][i]+self.N*self.delta)
                 
-            for i in range(self.n_i_left):
+            for i in range(self.n_i):
                 #Left images
                 self.vel[k].insert(0,self.vel[k][self.N-1])
                 self.pos[k].insert(0,self.pos[k][self.N-1]-self.N*self.delta)
@@ -126,49 +106,9 @@ class Problem:
                 self.eq_pos.insert(0,self.eq_pos[self.N-1]-self.N*self.delta)
 
 
-            """
-            #Now check if the left images crossed the right boundary and vice-versa
-            img_count_right2=0
-            img_count_left2=0
-
-            for i in range(self.n_i_left):
-                if(self.pos[k][i]>(self.N-0.5)*self.delta):
-                    img_count_right2+=1
-
-            for i in range(self.N,self.n_i_right):
-                if(self.pos[k][i]<0.5*self.delta):
-                    img_count_left2+=1
-
-            img_count_max2=max(img_count_left2,img_count_right2)
-
-            for i in range(img_count_max2):
-                #Right images
-                self.vel[k].append(self.vel[k][i])
-                self.pos[k].append(self.pos[k][i]+self.N*self.delta)
-                self.eq_pos.append(self.eq_pos[i]+self.N*self.delta)
-                #We want to guarantee that we have the same number of images for k and k-1. This is needed for the computation of the crossing. So
-                self.vel[k-1].append(self.vel[k-1][i])
-                self.pos[k-1].append(self.pos[k-1][i]+self.N*self.delta)
-                
-            for i in range(self.n_i_left):
-                #Left images
-                self.vel[k].insert(0,self.vel[k][self.N-1])
-                self.pos[k].insert(0,self.pos[k][self.N-1]-self.N*self.delta)
-                self.vel[k-1].insert(0,self.vel[k-1][self.N-1])
-                self.pos[k-1].insert(0,self.pos[k-1][self.N-1]-self.N*self.delta)
-                self.eq_pos.insert(0,self.eq_pos[self.N-1]-self.N*self.delta)
-            """
-
-
-            #print(self.pos[k])
-            #print(self.vel[k])
-            #print(self.eq_pos)
-
-
-            #print(self.vel[k])
 
             #Verifying if there were any crossings taking place
-            for i in range(1,self.N+self.n_i_right+self.n_i_left):
+            for i in range(1,self.N+2*self.n_i):
 
                 if(self.pos[k][i-1]>self.pos[k][i]):
 
@@ -200,7 +140,6 @@ class Problem:
                     #Velocities
                     self.vel[k][i-1]=vel_tc2_im1*math.cos(self.a-tc2)-math.sin(self.a-tc2)*(pos_tc2_im1-self.eq_pos[i-1])+(self.a-tc2)*self.delta
                     self.vel[k][i]=vel_tc2_i*math.cos(self.a-tc2)-math.sin(self.a-tc2)*(pos_tc2_i-self.eq_pos[i])-(self.a-tc2)*self.delta
-
 
 
             #Order all the particles according to their positions after each time interval dt
@@ -255,7 +194,7 @@ class Problem:
         plt.show()
 
         #Histogram of the velocity distribution
-        vlist=[self.vel[self.num_iter-1][i] for i in range(self.n_i_left,self.n_i_right+self.N)]
+        vlist=[self.vel[self.num_iter-1][i] for i in range(self.n_i,self.n_i+self.N)]
         plt.hist(vlist,normed=False,bins=20)#,range=[-0.95,0.95])
 
         #plt.show()
@@ -304,9 +243,8 @@ class Problem:
             if(-self.delta/2<self.pos[k][i]<self.delta*(self.N-0.5)):
                 pos_vec.append(self.pos[k][i])
                 num+=1
-        
-        if(k==439):
-            print(k,self.pos[k],pos_vec)
+
+            #print(k,self.pos[k],pos_vec,num)
 
         return pos_vec
 
@@ -328,20 +266,7 @@ class Problem:
         
         return equi_pos
 
-
-"""
-    def particle_pos(self,k):
-        return [self.pos[k][i] for i in range(self.n_i_left,self.n_i_left+self.N)]
-
-    def particle_vel(self,k):
-        return [self.vel[k][i] for i in range(self.n_i_left,self.n_i_left+self.N)]
-
-    
-    def particle_eq_pos(self):
-        return [self.eq_pos[i] for i in range(self.n_i_left, self.n_i_left+self.N)]
-"""
-
-                        
+   
                         
                         
                         

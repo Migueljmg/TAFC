@@ -8,15 +8,16 @@ import matplotlib.pyplot as plt
 
 random.seed(42)
 
-N=4
+N=1000#4
 wpdt=0.01
-num_iter=10
+num_iter=1000
 delta=0.1 #1/10 of the Debye length
 nr_images=0 #I'm sending this but it'll not matter, I have to remove it from the class
 init_pos=[delta*i for i in range(N)]
-init_vel=[random.uniform(-1,1) for i in range(N)]
-init_vel[0]=-3
+init_vel=[random.uniform(-0.5,0.5) for i in range(N)]
+#init_vel[0]=-3
 #init_vel[1]=-0.5
+
 
 p1 = Problem(N,init_pos,init_vel,wpdt,delta,num_iter,nr_images)
 

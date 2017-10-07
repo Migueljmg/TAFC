@@ -23,6 +23,7 @@ class Problem:
         #self.pos=[[0] * (self.N) for i in range(self.num_iter)] #final matrix of positions 
         #self.vel=[[0] * (self.N) for i in range(self.num_iter)] #final matrix of velocities
         self.eq_pos=[self.delta*n for n in range(self.N)]
+        self.follow=[[]]
         
 
         self.energy=[0 for n in range(n_iter)]
@@ -34,6 +35,8 @@ class Problem:
         self.pospos=[0 for i in range(len(self.prepos))]
         self.posvel=[0 for i in range(len(self.prepos))]
         
+        #choose fastest particles
+        maxv=max(self.prevel)
         argument=self.a
         a=self.a
         cos=math.cos(argument)
@@ -265,6 +268,22 @@ class Problem:
                 pkl_file.close()
         return traj
 
+
+    def getalleqpos(self,period):
+        lm=0
+        rm=self.num_iter-1
+        traj=[]
+        t_list=[i for i in range(lm,rm) if i%period==0]
+        for i in range(lm,rm):
+            if i%period==0:
+                pkl_file=open('./lixo/'+str(i)+'pos'+'.pkl','rb')
+                data=pickle.load(pkl_file)
+                traj.append(data[1])
+                pkl_file.close()
+        return traj
+
+
+
     def getallenergy(self,period):
         lm=0
         rm=self.num_iter-1
@@ -287,7 +306,7 @@ class Problem:
     def getvelocities(self,k):
         pkl_file=open('./lixo/'+str(k)+'vel.pkl','rb')
         dat=pickle.load(pkl_file)
-        data=[dat[0][i] for i in range(len(dat))]
+        data=[dat[i] for i in range(len(dat))]
         pkl_file.close()
         return data
 

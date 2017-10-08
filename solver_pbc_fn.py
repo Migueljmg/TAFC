@@ -5,13 +5,13 @@ import scipy.stats as stats
 import pickle
 
 class Problem:
-    def __init__(self, number,initial_positions, initial_velocities,wpdt,delta1,n_iter,n_image,period):
+    def __init__(self, number,initial_positions, initial_velocities,wpdt,delta1,n_iter,period):
 
         self.a=wpdt #adimensional measure of time
-        self.delta=delta1 #in units of the Debye length
-        self.period=period
-        self.init_pos=sorted(initial_positions) #in units of Debye length
-        self.init_vel=[x for _,x in sorted(zip(initial_positions,initial_velocities))] #in units of thermal velocity
+        self.delta=delta1 #distance between sheets in units of the Debye length
+        self.period=period #iteration interval between saved points
+        self.init_pos=sorted(initial_positions) # initial positions of the sheets
+        self.init_vel=[x for _,x in sorted(zip(initial_positions,initial_velocities))] #initial velocities of the sheets (in units of vt)
         self.N=number #number of particles
         self.num_iter=n_iter #number of iterations
 
@@ -19,36 +19,23 @@ class Problem:
         self.vec_n_i_left=[]#Important for calculating the actual equilibrium positions of the particles inside the box for every k
         self.vec_n_i_left.append(0)#we only start calculating the energy for k=1
 
-
-        #self.pos=[[0] * (self.N) for i in range(self.num_iter)] #final matrix of positions 
-        #self.vel=[[0] * (self.N) for i in range(self.num_iter)] #final matrix of velocities
-        self.eq_pos=[self.delta*n for n in range(self.N)]
-        self.follow=[[]]
+        self.eq_pos=[self.delta*n for n in range(self.N)]#equilibrium positions of the sheets
         
-
-        self.energy=[0 for n in range(n_iter)]
+        self.energy=[0 for n in range(n_iter)]#total energy of the system at each time
 
     def start(self):
-        "num_iter -> number of iterations; deltat-> iteration time"
-        self.prepos=self.init_pos
+        #The computation of the coordinates at t+dt requires their knowledge at t, dt being the chosen time step. So in each iteration we need variables to describe positions and velocities at t (prepos and prevel) and at t+dt(pospos and posvel) which are initialized below
+        self.prepos=self.init_pos 
         self.prevel=self.init_vel
         self.pospos=[0 for i in range(len(self.prepos))]
         self.posvel=[0 for i in range(len(self.prepos))]
         
-        #choose fastest particles
-        maxv=max(self.prevel)
-        argument=self.a
-        a=self.a
-        cos=math.cos(argument)
-        sin=math.sin(argument)
-
-
-        img_count_left=0
-        img_count_right=0
-        img_count_max=0
             
+        #Start of the time loop
         for k in range(1,self.num_iter):
 
+
+            #First of all clear the "pos" coordinates from the previous iteration. The "pos" coordinates from the previous iteration change to the "pre" coordinates from the current iteration at the end of the loop. The "pos" coordinates from this iteration can then be deleted in order to be computed later based on the new "pre" coordinates
             for i in range(len(self.pospos)):
                 del self.pospos[0]
 
@@ -59,19 +46,12 @@ class Problem:
             self.posvel = [0 for i in range(self.N)]
 
 
-            #print(k)
-            left_i=0
-            right_i=0
-            preeq_pos=[self.eq_pos[i] for i in range(len(self.eq_pos))]
-            #print(self.prepos)
+            #Now we want to check which sheets are inside the box and erase all the others. Image sheets are created at each iteration (this is better explained below in the code) and here we promote the ones that enter the box to "real" sheets
+            left_i=0 #variable used to check the number of sheets on the left of the box
+            right_i=0 #variable used to check the number of sheets on the right of the box
 
 
-            #print("\n begin ")
-            #print(k-1,self.prepos)
-
-            #if(k>141):
-
-            #Check which particles are inside the box 
+            #Check which sheets are inside the box. Knowing that the equilibrium positions of the first and last sheets are, respectively, x=0 and x=(N-1)delta, the box is bounded by [-delta/2,(N-1/2)delta
             for i in range(len(self.prepos)):
                 if(self.prepos[i]>-self.delta/2):
                     left_i=i
@@ -84,87 +64,89 @@ class Problem:
                     right_i=len(self.prepos)-1
 
             
-
-            #Clear the previous particles outside the box
-         
+            #Clear the sheets on the left of the box
             for i in range(left_i):
                 del self.prepos[0]
                 del self.prevel[0]
                 del self.eq_pos[0]
 
 
-            #After deleting the previous entries, right_i corresponds to N-1
+            #Clear the sheets on the right of the box. After deleting the previous entries, right_i corresponds to N-1
             for i in range(self.N,len(self.prepos)):
                 del self.prepos[self.N]
                 del self.prevel[self.N]
                 del self.eq_pos[self.N]
+
             
-        
-            #print(k,self.eq_pos,left_i,right_i)
+            #Save data at the rate "period" using pickle
+            #This way one does not fill up the RAM space
+            #and saves the vectors so several quantities
+            #can be plotted after the simulation is over
             if (k-1)%self.period==0:
                 pickle.dump([self.prepos,self.eq_pos], open('./lixo/'+str(k-1)+'pos'+'.pkl', 'wb'))
                 pickle.dump(self.prevel, open('./lixo/'+str(k-1)+'vel'+'.pkl', 'wb'))
 
 
-            
+            #Energy diagnosis at each time interval
             kinetic=sum([vels*vels for vels in self.prevel])
             diff=[self.prepos[i]-self.eq_pos[i] for i in range(len(self.prepos))]
             potential=sum([diffs*diffs for diffs in diff])
             self.energy[k-1]=kinetic+potential
 
 
+            #Initialization of auxiliar variables to count the needed image sheets to be created
             img_count_left=0
             img_count_right=0
             img_count_max=0
 
-
-            #print(self.prevel)
+            #Auxiliar variables
+            argument=self.a
+            cos=math.cos(argument)
+            sin=math.sin(argument)
 
 
             in1=True
             in2=True
+            #Loop to calculate the "pos" from the "pre" coordinates
+            #i.e. integration of the equation of motion
             for i in range(self.N):
                     
                 self.posvel[i]=self.prevel[i]*cos-sin*(self.prepos[i]-self.eq_pos[i])
                 self.pospos[i]=self.prepos[i]+self.prevel[i]*sin-(self.prepos[i]-self.eq_pos[i])*(1-cos)
 
 
+                #Check which is the first sheet at the right the box after the computation (if there are some) and assign the number of left images needed to compensate for that into the variable "img_count_left"
                 if(self.pospos[i]>(self.N-0.5)*self.delta and in1==True):
                     img_count_left=self.N-i
                     in1=False
 
-
+                #Check which is the first sheet at the left the box and assign the number of right images needed to compensate for that into the variable "img_count_right"
                 if(self.pospos[self.N-i-1]<-0.5*self.delta and in2==True):
                     img_count_right=self.N-i
                     in2=False
                 
-              #print(k,self.pospos,self.eq_pos)
 
-            img_count_max=max(img_count_left,img_count_right)
+            img_count_max=max(img_count_left,img_count_right)#check the maximum between both image counts. This will be the actual number of images creates on each side of the box
 
 
-            #Create new images
+            #Assigning the number of images to the corresponding class variable
             self.n_i=img_count_max
-            
 
-            #print(self.prepos)
-
-            #print(k,self.pospos,self.eq_pos)
 
             #Creation of images
+
+            #Right images
             for i in range(self.n_i):
-                #Right images
                 self.posvel.append(self.posvel[i])
                 self.pospos.append(self.pospos[i]+self.N*self.delta)
                 self.eq_pos.append(self.eq_pos[i]+self.N*self.delta)
-                #We want to guarantee that we have the same number of images for k and k-1. This is needed for the computation of the crossing. So
+                #We want to guarantee that we have the same number of images for k and k-1. This is needed for the computation of the crossings. So
                 self.prevel.append(self.prevel[i])
                 self.prepos.append(self.prepos[i]+self.N*self.delta)
-
             
 
+            #Left images
             for i in range(self.n_i):
-                #Left images
                 self.posvel.insert(0,self.posvel[self.N-1])
                 self.pospos.insert(0,self.pospos[self.N-1]-self.N*self.delta)
                 self.prevel.insert(0,self.prevel[self.N-1])
@@ -172,25 +154,23 @@ class Problem:
                 self.eq_pos.insert(0,self.eq_pos[self.N-1]-self.N*self.delta)
 
 
-            #print(k,self.pospos,self.eq_pos)
-            #print(k,self.pospos)
-
 
             #Verifying if there were any crossings taking place
             for i in range(1,self.N+2*self.n_i):
 
-                if(self.pospos[i-1]>self.pospos[i]):
+                if(self.pospos[i-1]>self.pospos[i]):#condition for a crossing to occur
 
-                   #Computation of tc1
+                    #This algorithm is performed based on Dawson's article from 1970 and so the correspondig notation is used (e.g: tc1, tc2,...)
+
+                    #Computation of tc1
                     tc1 = self.a*(self.prepos[i]-self.prepos[i-1])/(self.prepos[i]-self.prepos[i-1] + self.pospos[i-1]-self.pospos[i])
-                    # Position at t + tc1
+                    # Positions at t + tc1
                     pos_tc1_im1 = self.prepos[i-1]+self.prevel[i-1]*math.sin(tc1)-(self.prepos[i-1]-self.eq_pos[i-1])*(1-math.cos(tc1))## i-1 position
                     pos_tc1_i = self.prepos[i]+self.prevel[i]*math.sin(tc1)-(self.prepos[i]-self.eq_pos[i])*(1-math.cos(tc1))## i position
 
 
                     #Computation of tc2
                     tc2 = tc1*(self.prepos[i]-self.prepos[i-1])/(self.prepos[i]-self.prepos[i-1] + pos_tc1_im1-pos_tc1_i)
-                    #tc2= -math.atan((self.prepos[i]-self.prepos[i-1])/(self.prevel[i]-self.prevel[i-1]))
 
 
                     # Positions at t + tc2
@@ -201,8 +181,7 @@ class Problem:
                     vel_tc2_i=self.prevel[i]*math.cos(tc2)-math.sin(tc2)*(self.prepos[i]-self.eq_pos[i])## i velocity
 
 
-
-                    # Evolution from tc2 to t+dt
+                    # Evolution from tc2 to t+dt. Here the constant acceleration wp*wp*delta (or delta in our units) is added or subtracted
                     #Positions
                     self.pospos[i-1]=pos_tc2_im1+vel_tc2_im1*math.sin(self.a-tc2)-(pos_tc2_im1-self.eq_pos[i-1])*(1-math.cos(self.a-tc2))+(self.a-tc2)*(self.a-tc2)/2*self.delta
                     self.pospos[i]=pos_tc2_i+vel_tc2_i*math.sin(self.a-tc2)-(pos_tc2_i-self.eq_pos[i])*(1-math.cos(self.a-tc2))-(self.a-tc2)*(self.a-tc2)/2*self.delta
@@ -211,8 +190,8 @@ class Problem:
                     self.posvel[i]=vel_tc2_i*math.cos(self.a-tc2)-math.sin(self.a-tc2)*(pos_tc2_i-self.eq_pos[i])-(self.a-tc2)*self.delta
 
 
-            #Order all the particles according to their positions after each time interval dt
-            self.posvel=[x for _,x in sorted(zip(self.pospos,self.posvel))]
+            #Finally order all particles according to their positions 
+            self.posvel=[x for _,x in sorted(zip(self.pospos,self.posvel))]#order the velocities based on the position ordering
             self.pospos.sort()
 
 
@@ -227,63 +206,13 @@ class Problem:
                 del self.prevel[self.N]
 
 
+            #Prepare the "pre" coordinates for the next iteration which are the "pos" from the current one
             self.prevel=[self.posvel[i] for i in range(len(self.posvel))]
             self.prepos=[self.pospos[i] for i in range(len(self.pospos))]
 
 
 
-    
-    def energy_from_velocity(self,vel):
-        return sum([vels*vels for vels in vel])
-
-    def energy_from_position(self,pos,pos_eq):
-        diff=[pos[i]-pos_eq[i] for i in range(len(pos))]
-        return sum([diffs*diffs for diffs in diff])
-
-
-
-    def gettrajectory(self,particle,period):
-        lm=0
-        rm=self.num_iter-1
-        t_list=[i for i in range(lm ,rm) if i%period==0]
-        traj=[]
-        for i in range(lm,rm):
-            if i%period==0:
-                pkl_file=open('./lixo/'+str(i)+'pos'+'.pkl','rb')
-                data=pickle.load(pkl_file)
-                traj.append(data[0][particle])
-                pkl_file.close()
-        return traj
-        
-    def getalltrajectories(self,period):
-        lm=0
-        rm=self.num_iter-1
-        traj=[]
-        t_list=[i for i in range(lm,rm) if i%period==0]
-        for i in range(lm,rm):
-            if i%period==0:
-                pkl_file=open('./lixo/'+str(i)+'pos'+'.pkl','rb')
-                data=pickle.load(pkl_file)
-                traj.append(data[0])
-                pkl_file.close()
-        return traj
-
-
-    def getalleqpos(self,period):
-        lm=0
-        rm=self.num_iter-1
-        traj=[]
-        t_list=[i for i in range(lm,rm) if i%period==0]
-        for i in range(lm,rm):
-            if i%period==0:
-                pkl_file=open('./lixo/'+str(i)+'pos'+'.pkl','rb')
-                data=pickle.load(pkl_file)
-                traj.append(data[1])
-                pkl_file.close()
-        return traj
-
-
-
+    #Function that returns the total energy of the system at time iterations separated by "period"
     def getallenergy(self,period):
         lm=0
         rm=self.num_iter-1
@@ -303,105 +232,81 @@ class Problem:
 
         return energy
 
+   #get energy from the velocities of the particles
+   # E=v^2 is not the correct formula but is in agreement
+   #with the formula we use for the potential energy
+    def energy_from_velocity(self,vel):
+        return sum([vels*vels for vels in vel])
+
+    #get energy from the positions of the particles
+    #and the respective equilibrium positions E=(delta x)^2
+    def energy_from_position(self,pos,pos_eq):
+        diff=[pos[i]-pos_eq[i] for i in range(len(pos))]
+        return sum([diffs*diffs for diffs in diff])
+
+
+    #in this function we get the trajectory
+    #of one particle with a certain period
+    # (that should be compatible with 
+    #the period we give to the class in
+    #the first place. This should not be
+    #used as it only gives the particle that is
+    #in a certain position in the vector so it 
+    #doesn't follow a particle but only the particle
+    #that is in a certain order starting from the
+    #left (not physical meaning)
+    def gettrajectory(self,particle,period):
+        lm=0
+        rm=self.num_iter-1
+        t_list=[i for i in range(lm ,rm) if i%period==0]
+        traj=[]
+        for i in range(lm,rm):
+            if i%period==0:
+                #go to the file and take the matrix with the positions
+                #and take the position of one particle 
+                pkl_file=open('./lixo/'+str(i)+'pos'+'.pkl','rb')
+                data=pickle.load(pkl_file)
+                traj.append(data[0][particle])
+                pkl_file.close()
+        return traj
+
+    #the same as before but we get the trajectories
+    #for all particles
+    def getalltrajectories(self,period):
+        lm=0
+        rm=self.num_iter-1
+        traj=[]
+        t_list=[i for i in range(lm,rm) if i%period==0]
+        for i in range(lm,rm):
+            if i%period==0:
+                pkl_file=open('./lixo/'+str(i)+'pos'+'.pkl','rb')
+                data=pickle.load(pkl_file)
+                traj.append(data[0])
+                pkl_file.close()
+        return traj
+
+    #returns every equilibrium position with a certain period
+    def getalleqpos(self,period):
+        lm=0
+        rm=self.num_iter-1
+        traj=[]
+        t_list=[i for i in range(lm,rm) if i%period==0]
+        for i in range(lm,rm):
+            if i%period==0:
+                pkl_file=open('./lixo/'+str(i)+'pos'+'.pkl','rb')
+                data=pickle.load(pkl_file)
+                traj.append(data[1])
+                pkl_file.close()
+        return traj
+
+
+    #returns every velocity for the iteration k
     def getvelocities(self,k):
         pkl_file=open('./lixo/'+str(k)+'vel.pkl','rb')
         dat=pickle.load(pkl_file)
         data=[dat[i] for i in range(len(dat))]
         pkl_file.close()
         return data
-
- 
-
-
-    def cenas(self):        
-        #energy conservation?
-        print("oi")
-        self.energy[self.num_iter-1]=self.energy[self.num_iter-2]
-        plt.plot(self.energy)
-
-        plt.xlabel('iters)')
-        plt.ylabel('energy')
-        plt.title('About as simple as it gets, folks')
-        plt.grid(True)
-        #plt.savefig("test.png")
-        plt.show()
-        
-"""
-        #Histogram of the velocity distribution
-        #vlist=[self.vel[self.num_iter-1][i] for i in range(self.N)]
-        #plt.hist(vlist,normed=False,bins=10)#,range=[-0.95,0.95])
-
-        #plt.show()
-        
-
-
-
-        ######Animation with sheets####################
-        sheet_figure = plt.figure()
-        ax = plt.axes(xlim=(-self.delta, (self.N)*self.delta), ylim=(-0.1, 0.1))
-        point_set, = ax.plot([self.pos[0][i] for i in range(self.N)],[0 for i in range(self.N)], 'ro')
-        plt.axvline(x=-self.delta/2)
-        plt.axvline(x=(self.N-0.5)*self.delta)
-        pt_circ = plt.Circle((4, 4), 1, color='b', fill=False)
-        ax.add_artist(pt_circ)
-        ttl = ax.text(.5, 1.005, '', transform = ax.transAxes)
-
-        #I'm printing only the particles and not the images
-        def run_animation(i):
-            point_set.set_data([self.pos[i][k] for k in range(self.N)],[0 for k in range(self.N)])
-            ttl.set_text(str(i))    
-            return point_set,
-
-        anim = animation.FuncAnimation(sheet_figure, run_animation, frames=self.num_iter, interval=20)
-
-
-        #plt.show()
-
-
-    def energy_from_velocity(self,vel):
-        return sum([vels*vels for vels in vel])
-
-    def energy_from_position(self,pos,pos_eq):
-        diff=[pos[i]-pos_eq[i] for i in range(len(pos))]
-        return sum([diffs*diffs for diffs in diff])
-
-    def momentum(self,vel):
-        return sum (vel)
-
-
-
-    def particle_pos(self,k):
-        pos_vec=[]
-        num=0
-        for i in range(len(self.pospos)):
-            if(-self.delta/2<self.pospos[i]<self.delta*(self.N-0.5)):
-                pos_vec.append(self.pospos[i])
-                num+=1
-
-            #print(k,self.pospos,pos_vec,num)
-
-        return pos_vec
-
-    def particle_vel(self,k):
-        vel_vec=[]
-        for i in range(len(self.pospos)):
-            if(-self.delta/2<self.pospos[i]<self.delta*(self.N-0.5)):
-                vel_vec.append(self.posvel[i])
-
-        return vel_vec
-
-    
-    def particle_eq_pos(self,k):
-        equi_pos=[]
-        for i in range(len(self.pospos)):
-            if(-self.delta/2<self.pospos[i]<self.delta*(self.N-0.5)):
-                #I will have a different number of left images for every k
-                equi_pos.append((i-self.vec_n_i_left[k])*self.delta)
-        
-        return equi_pos
-
-    """
-                        
                         
                         
             

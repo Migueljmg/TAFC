@@ -1,30 +1,74 @@
-import math
-from scipy import integrate
-from solver_pbc_fn import Problem
-from scipy.optimize import curve_fit
-from scipy.integrate import simps
-import random
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-import os
-from time import time
-import math
+#File responsible for collecting initial conditions
+#for the problem (number of particles, delta, etc.)
+#and for producing the corresponding results
 
+import math #sqrt
+from scipy import integrate #perform integrations 
+                            #(second momentum of distrib.) 
+from solver_pbc_fn import Problem #class with the methods 
+                                  #to solve the model
+from scipy.optimize import curve_fit #fits
+from scipy.integrate import simps #integration with Simpson's method
+import random #eases the creation of initial conditions
+import numpy as np 
+import matplotlib.pyplot as plt #plots
+import matplotlib.animation as animation #animations
+import os #create directory to store files, and delete such files 
+          #when they are no longer needed
+from time import time #check runtime
+import sys
 
-def plot_energy(period):
+#Function to plot the total energy of the system
+def plot_energy(wpdt,num_iter,period):
+
+    t_list=[]
+    for i in range(num_iter-1):
+        if(i%period==0):
+            t_list.append(i*wpdt)
+
     b=p1.getallenergy(period)
-    plt.plot(range(len(b)),b)
+
+    energy_dev=(b[len(b)-1]-b[0])/b[0]
+
+    plt.plot(t_list,b)
+    plt.xlabel(r'$w_p t$')
+    plt.ylabel(r'Energy')
     plt.grid(True)
+    plt.savefig("energy.png")
     plt.show()
 
-def plot_vel_distr(num_iter,period):
-    vlist=p1.getvelocities(num_iter)#num_iter-1-(num_iter-1)%period)
-    n,bins,patches=plt.hist(vlist, bins=20)
+
+#Function to return the energy deviation from the initial energy after a time num_iter*wpdt
+def energy_deviation(wpdt,num_iter,period):
+
+    b=p1.getallenergy(period)
+    energy_dev=(b[len(b)-1]-b[0])/b[0]
+
+    return energy_dev
+
+
+
+def plot_vel_distr(num_iter,period,nbins):
+    vlist=p1.getvelocities(num_iter-1-(num_iter-1)%period)
+    n,bins,patches=plt.hist(vlist, bins=nbins)
     bin_centers=bins[:-1]+0.5*(bins[1:]-bins[:-1])
 
-    vlist2=[vlist[i]**2 for i in range(len(vlist))]
-    meansqr=math.sqrt(sum(vlist2)/len(vlist2))
+    plt.xlabel("velocity")
+    plt.ylabel("counts")
+    plt.savefig("vel_histogram.png")
+    print("\n vel_histrogram.png created \n")
+
+    plt.show()
+
+
+
+
+
+#Function to arrange the velocities of all sheets calculated at some iteration num_iter in a histogram and to fit it to a gaussian distribution. It returns the fit parameters
+def fit_vel_distr(num_iter,period):
+    vlist=p1.getvelocities(num_iter)
+    n,bins=np.histogram(vlist, bins=20)
+    bin_centers=bins[:-1]+0.5*(bins[1:]-bins[:-1])
 
     def func(x, maximum_y, x0, sigma):
         if(0<sigma<100): #bounds on sigma
@@ -33,22 +77,16 @@ def plot_vel_distr(num_iter,period):
 
     from scipy.optimize import curve_fit
     # Edit the starting values and the function to adapt for your need
-    #param_bound=([-100000,-100000,0],[100000,100000,1])
+    # p0 is the vector that has those values (the second is the average,
+    # the third is the sigma and the first is the height at x=x0
     popt, pcov = curve_fit(func, bin_centers, n,p0 = [10, 0, 0.4])
-    
-    """
-    popt2=[popt[0],0,meansqr]
-    plt.plot(bin_centers, func(bin_centers, *popt), 'r-')
-    plt.plot(bin_centers, func(bin_centers, *popt2), 'g-')
-    plt.grid(True)
-    plt.show()
-    """
-
 
     return popt
 
 
-
+#This function is responsible for two computations:
+#- Arrange the summed velocities from iteration min_it to num_iter into a histogram to be fitted. It plots the corresponding histogram along with the fit curve and returns the fit parameters.
+#- Compute the mean squared velocity based on the summed velocities mentioned above with the purpose of comparing it to the fit parameter sigma
 def plot_vel_distr_cumul(num_iter,period,min_it):
 
     vlist=[]
@@ -68,8 +106,7 @@ def plot_vel_distr_cumul(num_iter,period,min_it):
         return 1e40
 
     from scipy.optimize import curve_fit
-    # Edit the starting values and the function to adapt for your need
-    #param_bound=([-100000,-100000,0],[100000,100000,1])
+
     popt, pcov = curve_fit(func, bin_centers, n,p0 = [10, 0, 0.4])
 
 
@@ -77,14 +114,21 @@ def plot_vel_distr_cumul(num_iter,period,min_it):
     vlist2=[vlist[i]**2 for i in range(len(vlist))]
     meansqr=math.sqrt(sum(vlist2)/len(vlist2))
 
+    error=np.sqrt(n)
+
+    plt.plot(bin_centers, func(bin_centers, *popt), 'r-')
+    plt.errorbar(bin_centers,n,yerr=error,fmt='none')
+    plt.xlabel("velocity")
+    plt.ylabel("counts")
+    plt.savefig("cumulated_histogram.png")
+    plt.show()
+
     return (popt,meansqr)
 
 
 
-
-
-
-def animate(num_iter,period):
+#Function to provide an animation of the sheets, represented by red circles, untill iteration num_iter
+def animate(wpdt,num_iter,period):
     traj=p1.getalltrajectories(period)
 
     sheet_figure = plt.figure()
@@ -92,11 +136,14 @@ def animate(num_iter,period):
     point_set, = ax.plot([traj[0][i] for i in range(N)],[0 for i in range(N)], 'ro')
     plt.axvline(x=-delta/2)
     plt.axvline(x=(N-0.5)*delta)
+    plt.xlabel("x")
     pt_circ = plt.Circle((4, 4), 1, color='b', fill=False)
     ax.add_artist(pt_circ)
+    ttl = ax.text(.45, 1.005, '', transform = ax.transAxes)
 
     def run_animation(i):
         point_set.set_data([traj[i][k] for k in range(N)],[0 for k in range(N)])
+        ttl.set_text(r"$w_p t$ = " + str(i*wpdt*period))
         return point_set,
 
     anim = animation.FuncAnimation(sheet_figure, run_animation, frames=(num_iter-1)/period, interval=10)
@@ -104,360 +151,180 @@ def animate(num_iter,period):
     plt.show()
 
 
-#INTEGRAL OF v*v*f(v)
-def vintegral(k,divs,N):
 
-    vel_vec=[]
-
-    vel_vec.append(p1.getvelocities(k))
-
-    maxk=max(vel_vec[0])
-    mink=min(vel_vec[0])
-
-    deltav=(maxk-mink)/divs
-    v_distr=[0 for i in range(divs)]
-
-
-    for i in range(divs):
-        for j in range(N):
-            if(vel_vec[0][j]>mink+i*deltav and vel_vec[0][j]<mink+(i+1)*deltav):
-                v_distr[i]+=1
-
-
-    vsquared=[] # v*v*f(v)
-    for i in range(divs):
-        vsquared.append((mink+(i+1./2.)*deltav)*(mink+(i+1./2.)*deltav)*v_distr[i])
-
-    x=[mink+(i+1./2.*deltav) for i in range(divs)]
-    y=vsquared
-
-    return simps(y,x)
-
-
-
-
-
-def timevintegral(k,divs,N,period):
-
-    vel_vec=[]
-    vecmax=[]
-    vecmin=[]
-
-    ind=0
-    for j in range(k+1):
-        if(j%period==0):
-            vel_vec.append(p1.getvelocities(j))
-
-            vecmax.append(max(vel_vec[ind]))
-            vecmin.append(min(vel_vec[ind]))
-            
-            ind+=1
-
-    #ind now corresponds to the number of time samples
-
-    maxk=max(vecmax)
-    mink=min(vecmin)
-
-
-    deltav=(maxk-mink)/divs
-    v_distr=[0 for i in range(divs)]
-
-
-    for l in range(ind):
-        for i in range(divs):
-            for j in range(N):
-                if(vel_vec[l][j]>mink+i*deltav and vel_vec[l][j]<mink+(i+1)*deltav):
-                    v_distr[i]+=1
-
-
-    vsquared=[] # v*v*f(v)
-    for i in range(divs):
-        vsquared.append((mink+(i+1./2.)*deltav)*(mink+(i+1./2.)*deltav)*v_distr[i]/(ind)) #Division by ind to get coherent results
-
-    x=[mink+(i+1./2.*deltav) for i in range(divs)]
-    y=vsquared
-
-    return simps(y,x)
-
-
-
-
-#General way of creating 2D arrays
-#a = [[0] * ncol for i in range(nrow)]
 os.system("rm ./lixo/*.pkl")
 
 
-random.seed(42)
-t0=time()
-N=1000
-wpdt=0.0001
-num_iter=100000
-delta=0.1 #1/10 of the Debye length
-nr_images=0 #number of image charges
-period=1000
-init_pos=[delta*i for i in range(N)]
-init_vel=[random.uniform(-0.5,0.5) for i in range(N)]
+#CHECK THE ARGUMENTS SENT BY THE USER
+words=[str(sys.argv[i]) for i in range(len(sys.argv)) if sys.argv[i][0]=='-']
+word=""
+for case in words:
+    word+=case
 
+if(word=="" or "h" in word):
+    print("\n HELP \n \n")
+    print("-a for animation \n")
+    print("-e for energy diagnosis \n")
+    print("-t for trajectories' plot \n")
+    print("-v for velocity distribution histogram \n")
+    print("-p for thermalization physical process analysis \n")
 
-#init_vel[0]=3
-#init_vel[1]=-0.7
-#init_vel[2]=0.05
-#init_vel[3]=0.05
-p1 = Problem(N,init_pos,init_vel,wpdt,delta,num_iter,nr_images,period)
 
-p1.start()
 
-###MEAN SQUARE VELOCITY IN EQUILIBRIUM
-
-#ele atinge o equilibrio por volta dos 40000
-
-"""
-velvec=[]
-count=0
-for i in range(num_iter-1):
-    if(i%period==0 and i>40000):
-        velvec.append(p1.getvelocities(i))
-        count+=1
-
-#vels=p1.getvelocities(num_iter-1- (num_iter-1)%period)
-
-vsqmedi=[]
-for i in range(count):
-    vsqmedi.append(sum([vel*vel/N/count for vel in velvec[i]]))
-
-#plt.plot(vsqmedi)
-#plt.show()
-
-vsqmed=sum(vsqmedi)
-
-print(vsqmed)
-"""
-
-"""
-####EQUILIBRIUM VALUE OF SIGMA
-mu=[]
-sigma=[]
-
-for i in range(num_iter):
-    if(i%period==0 and i>40000):
-        param=plot_vel_distr(i,period)
-        mu.append(param[1])
-        sigma.append(param[2])
-
-
-plt.ylim(0.26,0.6)
-plt.plot(sigma)
-plt.savefig("sigma5.png")
-plt.show()
-
-eq_sigma=[sigma[i] for i in range(len(sigma)-100,len(sigma))]
-t_list=[i for i in range(len(sigma)-100,len(sigma))]
-
-def func(x,eq_sigma_val):
-    return eq_sigma_val
-
-from scipy.optimize import curve_fit
-
-popt, pcov = curve_fit(func, t_list, eq_sigma, p0 = [0.3])
-print(popt[0])
-"""
-
-
-#plt.plot(mu)
-#plt.show()
-
-##CUMULATIVE EQUILIBRIUM VALUE OF SIGMA
-min_it=40000
-param=plot_vel_distr_cumul(num_iter,period,min_it)
-print("sigma ", param[0][2])
-print("sqrt(<v*v>) ", param[1])
-
-
-"""
-###INTEGRAL OF V*V*F(V)
-divs=20 #number of intervals in the distribution function
-integral_list=[] #list with the integrals of v*v*f(v)
-for k in range(num_iter-1):
-    if(k%period==0):
-        integral_list.append(vintegral(k,divs,N)) #(k,divs,N)
-
-plt.plot(integral_list)
-plt.savefig("test3.png")
-plt.show()
-"""
-
-
-#p1.start()
-t1=time()
-
-#print(t1-t0)
-#p1.cenas()
-
-
-#plot_energy(period)
-
-
-
-#plot_vel_distr(num_iter-1- (num_iter-1)%period,period)
-
-
-
-"""
-###INTEGRAL OF V*V*F(V) WITH SUM IN TIME
-divs=20 #number of intervals in the distribution function
-integral_list=[] #list with the integrals of v*v*f(v)
-for k in range(num_iter-1):
-    if(k%period==0):
-        integral_list.append(timevintegral(k,divs,N,period)) #(k,divs,N)
-
-plt.plot(integral_list)
-plt.savefig("test4.png")
-plt.show()
-
-plot_vel_distr(num_iter-1,period)
-"""
-
-
-
-
-#animate(num_iter,period)
-
-
-##Physical process 
-
-"""
-#ANIMATION OF THE DEVIATIONS
-random.seed(42)
-t0=time()
-N=2000
-wpdt=0.005
-num_iter=3000
-delta=0.1 #1/10 of the Debye length
-nr_images=0 #number of image charges
-period=50
-init_pos=[delta*i for i in range(N)]
-init_vel=[]
-
-for i in range(N/4):
-    init_vel.append(0)
-
-for i in range(N/4,3*N/4):
-    init_vel.append(0)#math.sin(2*math.pi*(i-N/4)/N))
-
-for i in range(3*N/4,N):
-    init_vel.append(0)
-
-fastpar=50
-v_fastpar=2
-for i in range(fastpar):
-    init_vel[i]=v_fastpar
-    init_pos[i]=i*delta/10
-
-
-#plt.plot(init_vel)
-#plt.show()
-
-p1 = Problem(N,init_pos,init_vel,wpdt,delta,num_iter,nr_images,period)
-
-p1.start()
-
-eq_pos=p1.getalleqpos(period)
-traj=p1.getalltrajectories(period)
-
-deviation = [[0] * N for i in range(len(eq_pos))]
-
-
-for k in range((num_iter-1)/period):
-    for i in range(N):
-        deviation[k][i]=traj[k][i]-eq_pos[k][i]
-
-fig = plt.figure()
-
-# animation function.  This is called sequentially
-def animate(i):
-    plt.cla()
-    #plt.hist(self.pos[i],normed=False,bins=200,range=[0,(self.N-1)*self.delta])
-    plt.ylim(-2.5,2.5)
-    plt.plot(deviation[i])
-
-
-# call the animator.  blit=True means only re-draw the parts that have changed.
-anim = animation.FuncAnimation(fig, animate, frames=len(eq_pos)-1, interval=100)
-
-plt.show()
-"""
-
-
-
-
-
-
-"""
-#TRAJECTORY
-a=p1.getalltrajectories(period)
-print(len(a))
-plt.plot(range(num_iter-1), [c[0] for c in a])
-plt.plot(range(num_iter-1), [c[1] for c in a])
-plt.grid(True)
-plt.show()
-"""
-
-
-"""
-#ENERGY
-b=p1.getallenergy(period)
-plt.plot(range(len(b)),b)
-plt.grid(True)
-plt.show()
-"""
-
-"""
-#MAXWELLIAN
-vlist=p1.getvelocities(num_iter-1-(num_iter-1)%period)
-n,bins,patches=plt.hist(vlist, bins=20)
-bin_centers=bins[:-1]+0.5*(bins[1:]-bins[:-1])
-
-def func(x, maximum_y, x0, sigma):
-    return maximum_y*np.exp(-(x-x0)**2/(2*sigma**2))
-
-from scipy.optimize import curve_fit
-# Edit the starting values and the function to adapt for your need
-popt, pcov = curve_fit(func, bin_centers, n, p0 = [10, 0, 2])
-
-plt.plot(bin_centers, func(bin_centers, *popt), 'r-')
-plt.grid(True)
-plt.show()
-"""
-
-"""
 #ANIMATION
+if("a" in word):
+    #Parameters of the problem
+    random.seed(42)
+    t0=time() #starting time
+    N=10 #Number of sheets
+    wpdt=0.001 #time step in units of wp
+    num_iter=10000 #number of iterations
+    delta=0.1 #distance between sheets in units of the Debye length
+    period=10 #iteration interval between sampling points
+    init_pos=[delta*i for i in range(N)] #array with the initial positions of the sheets
+    init_vel=[random.uniform(-0.2,0.2) for i in range(N)] #array with the initial velocities of the sheets
 
-traj=p1.getalltrajectories(period)
+    p1 = Problem(N,init_pos,init_vel,wpdt,delta,num_iter,period) #initialization of an object of the class Problem responsible for the computation of the sheets' motion
 
-#for i in range(num_iter-1):
-#    print(i,traj[i][9])
+    p1.start() #start the computations
 
-
-sheet_figure = plt.figure()
-ax = plt.axes(xlim=(-delta, N*delta), ylim=(-0.1, 0.1))
-point_set, = ax.plot([traj[0][i] for i in range(N)],[0 for i in range(N)], 'ro')
-plt.axvline(x=-delta/2)
-plt.axvline(x=(N-0.5)*delta)
-pt_circ = plt.Circle((4, 4), 1, color='b', fill=False)
-ax.add_artist(pt_circ)
-#ttl = ax.text(.5, 1.005, '', transform = ax.transAxes)
-
-def run_animation(i):
-    point_set.set_data([traj[i][k] for k in range(N)],[0 for k in range(N)])
-    #ttl.set_text(str(i))    
-    return point_set,
-
-anim = animation.FuncAnimation(sheet_figure, run_animation, frames=(num_iter-1)/period, interval=5)
-
-plt.show()
-"""
+    animate(wpdt,num_iter,period)
 
 
 
+#ENERGY CONSERVATION CHECK
+if("e" in word):
+    #Parameters of the problem
+    random.seed(42)
+    t0=time() #starting time
+    N=20 #Number of sheets
+    wpdt=0.001 #time step in units of wp
+    num_iter=10000 #number of iterations
+    delta=0.1 #distance between sheets in units of the Debye length
+    period=10 #iteration interval between sampling points
+    init_pos=[delta*i for i in range(N)] #array with the initial positions of the sheets
+    init_vel=[random.uniform(-0.5,0.5) for i in range(N)] #array with the initial velocities of the sheets
 
-os.system("rm ./lixo/*.pkl")
+    p1 = Problem(N,init_pos,init_vel,wpdt,delta,num_iter,period) #initialization of an object of the class Problem responsible for the computation of the sheets' motion
+
+    p1.start() #start the computations
+
+    plot_energy(wpdt,num_iter,period)
+    energy_dev=energy_deviation(wpdt,num_iter,period)
+
+    print(" Energy deviation: " +  str(energy_dev))
+
+    print("\n energy.png created \n")
+
+
+
+#TRAJECTORIES
+if("t" in word):
+    #Parameters of the problem
+    random.seed(42)
+    t0=time() #starting time
+    N=10 #Number of sheets
+    wpdt=0.001 #time step in units of wp
+    num_iter=10000 #number of iterations
+    delta=0.1 #distance between sheets in units of the Debye length
+    period=1 #iteration interval between sampling points
+    init_pos=[delta*i for i in range(N)] #array with the initial positions of the sheets
+    init_vel=[random.uniform(-0.08,0.08) for i in range(N)] #array with the initial velocities of the sheets
+
+    p1 = Problem(N,init_pos,init_vel,wpdt,delta,num_iter,period) #initialization of an object of the class Problem responsible for the computation of the sheets' motion
+
+    p1.start() #start the computations
+
+    traj=p1.getalltrajectories(period)
+
+    for i in range(N):
+        plt.plot(range(len(traj)), [c[i] for c in traj])
+
+    plt.show()
+
+
+#HISTOGRAM OF VELOCITIES
+if("v" in word):
+    #Parameters of the problem
+    random.seed(42)
+    t0=time() #starting time
+    N=1000 #Number of sheets
+    wpdt=0.0005 #time step in units of wp
+    num_iter=10000 #number of iterations
+    delta=0.1 #distance between sheets in units of the Debye length
+    period=20 #iteration interval between sampling points
+    init_pos=[delta*i for i in range(N)] #array with the initial positions of the sheets
+    init_vel=[random.uniform(-0.3,0.3) for i in range(N)] #array with the initial velocities of the sheets
+
+    p1 = Problem(N,init_pos,init_vel,wpdt,delta,num_iter,period) #initialization of an object of the class Problem responsible for the computation of the sheets' motion
+
+    p1.start() #start the computations
+
+    nbins=20
+    plot_vel_distr(num_iter-1,period,nbins) #plot histogram of velocities for iteration num_iter-1
+
+
+
+
+#PHYSICAL PROCESS - THERMALIZATION
+if("p" in word):
+    #Parameters of the problem. Notice that one must should also choose the parameters min_it and starting_time at the beggining of points 2 and 3, respectively (these are explained there)
+    random.seed(42)
+    N=500 #Number of sheets
+    wpdt=0.0005 #time step in units of wp
+    num_iter=14000 #number of iterations
+    delta=0.1 #distance between sheets in units of the Debye length
+    period=250 #iteration interval between sampling points
+    init_pos=[delta*i for i in range(N)] #array with the initial positions of the sheets
+    init_vel=[random.uniform(-0.2,0.2) for i in range(N)] #array with the initial velocities of the sheets
+
+    p1 = Problem(N,init_pos,init_vel,wpdt,delta,num_iter,period) #initialization of an object of the class Problem responsible for the computation of the sheets' motion
+
+    p1.start() #start the computations
+
+    
+    #1 - Check energy conservation
+    plot_energy(wpdt,num_iter,period)
+
+
+
+    #2 - Comparison between equilibrium values of sigma and sqrt(<v*v>)
+    #For these computations the velocity distributions are summed in a cumulative way from min_it to num_iter, "period" after "period". min_it is chosen such that it already corresponds to an equilibrium situation 
+    min_it=6000
+
+    if(min_it>=num_iter):
+        print("Warning! min_it must be smaller than num_iter. Try again.")
+        sys.exit(0)
+
+    param=plot_vel_distr_cumul(num_iter,period,min_it) 
+    print("sigma ", param[0][2])
+    print("sqrt(<v*v>) ", param[1])
+
+    
+
+    #3 - Plot of the variation of sigma squared with time from starting_time to num_iter, "period" after "period"
+    starting_time=1000
+
+    if(starting_time>=num_iter):
+        print("Warning! starting_time must be smaller than num_iter. Try again.")
+        sys.exit(0)
+
+    sigma=[]
+    iter_list=[]
+
+    for i in range(starting_time,num_iter):
+        if(i%period==0):
+            iter_list.append(i)
+            param=fit_vel_distr(i,period)
+            sigma.append(param[2]*param[2])
+
+
+    t_list=[iter_list[i]*wpdt for i in range(len(sigma))]
+    plt.xlabel(r'$w_p t$')
+    plt.ylabel(r'$\sigma^2$')
+    plt.plot(t_list,sigma,'o-')
+    plt.savefig("sigma_time.png")
+
+    plt.show()
+
+    print("\n energy.png, cumulated_histogram.png and sigma_time.png created \n")
